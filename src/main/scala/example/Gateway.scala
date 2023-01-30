@@ -30,6 +30,8 @@ object Gateway {
       introspectionResponse <-
         ZIO
           .fromFuture { implicit ec =>
+            // Assumption: the introspection query is standardized and universal
+            // The schemaloader below might expect other data?
             Executor
               .execute(
                 Sangria.schema,
