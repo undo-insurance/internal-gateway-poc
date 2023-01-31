@@ -1,0 +1,10 @@
+query queryTwoGraphs {
+    #    status {
+    #      ok {
+    #        output
+    #      }
+    #    }
+       sangriaStatus {
+        output
+       }
+     }

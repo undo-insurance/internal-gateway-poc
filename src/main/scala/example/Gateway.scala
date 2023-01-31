@@ -22,6 +22,7 @@ import java.io.File
 import java.nio.file.Paths
 import java.nio.file.Files
 import java.nio.file.Path
+import sangria.parser.QueryParser
 
 object Gateway {
   val interpreter = for {
@@ -31,26 +32,25 @@ object Gateway {
     interpreter <- graphQL.interpreter.orDie
   } yield interpreter
 
+  val introspectionStringFromCaliban =
+    """query{__schema{queryType{name} mutationType{name} subscriptionType{name} types{kind name description fields(includeDeprecated:true){name description args{name description type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} defaultValue} type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} isDeprecated deprecationReason} inputFields{name description type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} defaultValue} interfaces{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} enumValues(includeDeprecated:true){name description isDeprecated deprecationReason} possibleTypes{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}}} directives{name description locations args{name description type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} defaultValue}}}}"""
+
   val introspectSangria = {
+    val query = QueryParser.parse(introspectionStringFromCaliban).get
     for {
-      introspectionResponse <-
+      introspectionResponseRaw <-
         ZIO
           .fromFuture { implicit ec =>
-            // Assumption: the introspection query is standardized and universal
-            // The schemaloader below might expect other data?
             Executor
               .execute(
                 Sangria.schema,
-                sangria.introspection.introspectionQuery
+                query // Or sangria.introspection.introspectionQuery
               )
-              .map(Success.apply)
-              .map(_.toEither)
-              .map(_.map(_.hcursor.downField("data").focus))
           }
-          .right
-          .orElseFail(new RuntimeException("Oh no"))
-          .someOrFailException
-          .orDie
+      introspectionResponse = introspectionResponseRaw.hcursor
+        .downField("data")
+        .focus
+        .get
       sdl = Sangria.schema.renderPretty
       _ <- ZIO.attempt(Files.write(Path.of("sdl.graphql"), sdl.getBytes()))
       _ <- ZIO.attempt(
@@ -60,7 +60,7 @@ object Gateway {
         )
       )
       schema <- SchemaLoader
-        .fromString(sdl)
+        .fromString(introspectionResponse.spaces2)
         .load
         .orDie
       remoteSchema <- ZIO
