@@ -1,0 +1,7 @@
+type Query {
+  sangriaStatus: StatusOkOutput!
+}
+
+type StatusOkOutput {
+  output: Boolean!
+}

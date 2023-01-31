@@ -16,6 +16,12 @@ import sangria.marshalling.circe._
 import zio.ZIO
 
 import scala.util.Success
+import zio.stream.ZStream
+import zio.stream.ZSink
+import java.io.File
+import java.nio.file.Paths
+import java.nio.file.Files
+import java.nio.file.Path
 
 object Gateway {
   val interpreter = for {
@@ -45,8 +51,16 @@ object Gateway {
           .orElseFail(new RuntimeException("Oh no"))
           .someOrFailException
           .orDie
+      sdl = Sangria.schema.renderPretty
+      _ <- ZIO.attempt(Files.write(Path.of("sdl.graphql"), sdl.getBytes()))
+      _ <- ZIO.attempt(
+        Files.write(
+          Path.of("introspection-response.graphql"),
+          introspectionResponse.spaces2.getBytes()
+        )
+      )
       schema <- SchemaLoader
-        .fromString(introspectionResponse.noSpaces)
+        .fromString(sdl)
         .load
         .orDie
       remoteSchema <- ZIO
