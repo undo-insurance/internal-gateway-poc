@@ -3,7 +3,8 @@ import sbt._
 object Dependencies {
 
   object Versions {
-    val caliban = "2.0.2+30-f13f6bc2+20230202-1401-SNAPSHOT"
+    val caliban =
+      "2.0.2+30-f13f6bc2+20230202-1401-SNAPSHOT" // This change is needed https://github.com/ghostdogpr/caliban/pull/1596
     val sangria = "3.5.0"
     val zio = "2.0.5"
     val circe = "0.14.3"
