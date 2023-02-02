@@ -28,7 +28,7 @@ object Sangria {
         StatusType,
         description = None,
         arguments = Nil,
-        resolve = _ => StatusOkOutput(output = true)
+        resolve = _ => StatusOkOutput(output = false)
       )
     )
   )

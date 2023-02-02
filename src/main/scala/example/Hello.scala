@@ -31,19 +31,10 @@ object Hello extends ZIOAppDefault {
 
   override def run = {
     for {
-      // sttpBackend <- HttpClientZioBackend()
-      // response <- caliban.tools.IntrospectionClient
-      //   .introspect(
-      //     "http://...",
-      //     None
-      //   )
-      //   .provide(ZLayer.succeed(sttpBackend))
-      // schema = RemoteSchema.parseRemoteSchema(response)
-      // _ <- zio.Console.printLine(s"Response: $response")
-      // _ <- zio.Console.printLine("------- DIVIDER ------")
-      // _ <- zio.Console.printLine(s"Schme: $schema")
       interpreter <- Gateway.interpreter
       _ <- interpreter.check(query)
+      result <- interpreter.execute(query)
+      _ <- zio.Console.printLine(result)
     } yield ()
   }
 

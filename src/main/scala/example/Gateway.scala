@@ -32,11 +32,7 @@ object Gateway {
     interpreter <- graphQL.interpreter.orDie
   } yield interpreter
 
-  val introspectionStringFromCaliban =
-    """query{__schema{queryType{name} mutationType{name} subscriptionType{name} types{kind name description fields(includeDeprecated:true){name description args{name description type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} defaultValue} type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} isDeprecated deprecationReason} inputFields{name description type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} defaultValue} interfaces{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} enumValues(includeDeprecated:true){name description isDeprecated deprecationReason} possibleTypes{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}}} directives{name description locations args{name description type{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{kind name ofType{name}}}}}}}}} defaultValue}}}}"""
-
   val introspectSangria = {
-    val query = QueryParser.parse(introspectionStringFromCaliban).get
     for {
       introspectionResponseRaw <-
         ZIO
@@ -44,27 +40,18 @@ object Gateway {
             Executor
               .execute(
                 Sangria.schema,
-                query // Or sangria.introspection.introspectionQuery
+                sangria.introspection.introspectionQuery
               )
           }
       introspectionResponse = introspectionResponseRaw.hcursor
         .downField("data")
         .focus
         .get
-      sdl = Sangria.schema.renderPretty
-      _ <- ZIO.attempt(Files.write(Path.of("sdl.graphql"), sdl.getBytes()))
-      _ <- ZIO.attempt(
-        Files.write(
-          Path.of("introspection-response.graphql"),
-          introspectionResponse.spaces2.getBytes()
-        )
+      remoteSchema <- caliban.tools.IntrospectionClient.introspect(
+        introspectionResponseRaw.spaces2
       )
-      schema <- SchemaLoader
-        .fromString(introspectionResponse.spaces2)
-        .load
-        .orDie
       remoteSchema <- ZIO
-        .fromOption(RemoteSchema.parseRemoteSchema(schema))
+        .fromOption(RemoteSchema.parseRemoteSchema(remoteSchema))
         .unsome
         .someOrFailException
         .orDie
