@@ -31,9 +31,12 @@ object Hello extends ZIOAppDefault {
 
   override def run = {
     for {
-      interpreter <- Gateway.interpreter
+      graph <- Gateway.graph
+      interpreter <- graph.interpreter.orDie
       _ <- interpreter.check(query)
       result <- interpreter.execute(query)
+      _ <- zio.Console.printLine("Composed graph SDL")
+      _ <- zio.Console.printLine(graph.render)
       _ <- zio.Console.printLine(result)
     } yield ()
   }

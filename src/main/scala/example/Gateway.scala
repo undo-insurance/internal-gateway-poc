@@ -1,6 +1,6 @@
 package example
 
-import caliban.ResponseValue
+import caliban.{CalibanError, GraphQL, GraphQLInterpreter, ResponseValue}
 import caliban.client._
 import caliban.execution.Field
 import caliban.tools.RemoteSchema
@@ -13,11 +13,12 @@ import io.circe.parser.decode
 import io.circe.syntax._
 import sangria.execution.Executor
 import sangria.marshalling.circe._
-import zio.ZIO
+import zio.{UIO, ZIO}
 
 import scala.util.Success
 import zio.stream.ZStream
 import zio.stream.ZSink
+
 import java.io.File
 import java.nio.file.Paths
 import java.nio.file.Files
@@ -25,14 +26,13 @@ import java.nio.file.Path
 import sangria.parser.QueryParser
 
 object Gateway {
-  val interpreter = for {
+  val graph: UIO[GraphQL[Any]] = for {
     pureCaliban <- ZIO.succeed(Caliban.schema)
-    proxiedSangria <- introspectSangria
+    proxiedSangria <- introspectSangria.orDie
     graphQL = (pureCaliban |+| proxiedSangria)
-    interpreter <- graphQL.interpreter.orDie
-  } yield interpreter
+  } yield graphQL
 
-  val introspectSangria = {
+  private val introspectSangria = {
     for {
       introspectionResponseRaw <-
         ZIO
@@ -47,9 +47,13 @@ object Gateway {
         .downField("data")
         .focus
         .get
-      remoteSchema <- caliban.tools.IntrospectionClient.introspect(
-        introspectionResponseRaw.spaces2
-      )
+      remoteSchema <- ZIO.fromEither {
+        caliban.tools.IntrospectionClient.introspection
+          .decode(
+            introspectionResponseRaw.spaces2
+          )
+          .map { case (document, _, _) => document }
+      }
       remoteSchema <- ZIO
         .fromOption(RemoteSchema.parseRemoteSchema(remoteSchema))
         .unsome
