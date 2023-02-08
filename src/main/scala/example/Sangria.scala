@@ -33,7 +33,28 @@ object Sangria {
     )
   )
 
-  val schema: Schema[Unit, Unit] = Schema(query = queryType)
+  case class MutationResult(result: Int)
+  implicit val MutationResultType = deriveObjectType[Unit, MutationResult]()
+
+  val mutationArg = Argument("add", IntType)
+  val mutationType = ObjectType(
+    "Mutation",
+    fields[Unit, Unit](
+      Field(
+        name = "sangriaMutation",
+        description = None,
+        arguments = mutationArg :: Nil,
+        fieldType = MutationResultType,
+        resolve = ctx => {
+          val toAdd = ctx.arg(mutationArg)
+          MutationResult(result = toAdd + 1)
+        }
+      )
+    )
+  )
+
+  val schema: Schema[Unit, Unit] =
+    Schema(query = queryType, mutation = Some(mutationType))
 
   def handleRequest(body: JsonObject): Future[Try[Json]] = {
     implicit val ec = scala.concurrent.ExecutionContext.Implicits.global

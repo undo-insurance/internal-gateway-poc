@@ -24,6 +24,8 @@ import java.nio.file.Paths
 import java.nio.file.Files
 import java.nio.file.Path
 import sangria.parser.QueryParser
+import scala.annotation.meta.field
+import caliban.tools.stitching.RemoteMutation
 
 object Gateway {
   val graph: UIO[GraphQL[Any]] = for {
@@ -80,7 +82,24 @@ object Gateway {
                 )
                 .orDie
             ),
-          None
+          Some(
+            RemoteResolver.fromFunctionM((f: Field) =>
+              ZIO
+                .fromFuture(implicit ex =>
+                  Sangria.handleRequest(
+                    RemoteMutation(f).toGraphQLRequest.asJson.asObject.get
+                  )
+                )
+                .flatMap(
+                  ZIO
+                    .fromTry(_)
+                    .flatMap(json =>
+                      ZIO.fromEither(decode[ResponseValue](json.toString()))
+                    )
+                )
+                .orDie
+            )
+          )
         )
     }
   }

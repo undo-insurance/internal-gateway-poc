@@ -29,15 +29,28 @@ object Hello extends ZIOAppDefault {
      }
   """
 
+  val mutation = """
+     mutation testMutation {
+       sangriaMutation(add: 5) {
+        result
+       }
+     }
+  """
+
   override def run = {
     for {
       graph <- Gateway.graph
       interpreter <- graph.interpreter.orDie
       _ <- interpreter.check(query)
-      result <- interpreter.execute(query)
-      _ <- zio.Console.printLine("Composed graph SDL")
+      _ <- interpreter.check(mutation)
+      queryResult <- interpreter.execute(query)
+      mutationResult <- interpreter.execute(mutation)
+      _ <- zio.Console.printLine("--- Composed graph SDL ---")
       _ <- zio.Console.printLine(graph.render)
-      _ <- zio.Console.printLine(result)
+      _ <- zio.Console.printLine("--- Query result ---")
+      _ <- zio.Console.printLine(queryResult)
+      _ <- zio.Console.printLine("--- Mutation result ---")
+      _ <- zio.Console.printLine(mutationResult)
     } yield ()
   }
 
