@@ -25,6 +25,7 @@ object Hello extends ZIOAppDefault {
        }
        sangriaStatus {
         output
+        userName
        }
      }
   """
@@ -38,13 +39,19 @@ object Hello extends ZIOAppDefault {
   """
 
   override def run = {
+    val userContext = UserContext(name = "Poul Skipper")
+    val userContextLayer: ZLayer[Any, Nothing, UserContext] = ZLayer.succeed(
+      userContext
+    )
     for {
-      graph <- Gateway.graph
+      graph <- Gateway.graph.provide(userContextLayer)
       interpreter <- graph.interpreter.orDie
       _ <- interpreter.check(query)
       _ <- interpreter.check(mutation)
-      queryResult <- interpreter.execute(query)
-      mutationResult <- interpreter.execute(mutation)
+      queryResult <- interpreter.execute(query).provide(userContextLayer)
+      mutationResult <- interpreter
+        .execute(mutation)
+        .provide(userContextLayer)
       _ <- zio.Console.printLine("--- Composed graph SDL ---")
       _ <- zio.Console.printLine(graph.render)
       _ <- zio.Console.printLine("--- Query result ---")
