@@ -141,21 +141,20 @@ object Gateway {
             ),
           Some(
             RemoteResolver.fromFunctionM((f: Field) =>
-              ZIO
-                .fromFuture(implicit ex =>
+              (for {
+                token <- authToken
+                ip <- clientIp
+                request <- ZIO.fromFuture(implicit ex =>
                   Sangria.handleRequest(
                     RemoteMutation(f).toGraphQLRequest.asJson.asObject.get,
-                    SangriaUserContext(None, None) // TODO token, ip)
+                    SangriaUserContext(token, ip)
                   )
                 )
-                .flatMap(
-                  ZIO
-                    .fromTry(_)
-                    .flatMap(json =>
-                      ZIO.fromEither(decode[ResponseValue](json.toString()))
-                    )
+                json <- ZIO.fromTry(request)
+                response <- ZIO.fromEither(
+                  decode[ResponseValue](json.toString())
                 )
-                .orDie
+              } yield response).orDie
             )
           )
         )
