@@ -27,6 +27,7 @@ import sangria.parser.QueryParser
 import scala.annotation.meta.field
 import caliban.tools.stitching.RemoteMutation
 import java.util.UUID
+import scala.util.Try
 
 final case class SangriaUserContext(
     token: Option[Gateway.Token],
@@ -62,7 +63,7 @@ object Gateway {
   private def clientIp: ZIO[RequestContext, Nothing, Option[ClientIp]] = ZIO
     .serviceWithZIO[FiberRef[Option[ClientIp]]](_.get)
 
-  private def remoteResolver
+  private def remoteResolver()
       : RemoteResolver[RequestContext, Nothing, Field, ResponseValue] =
     RemoteResolver
       .fromFunctionM { field =>
@@ -87,7 +88,7 @@ object Gateway {
         } yield result
       }
 
-  private val introspectSangria
+  private def introspectSangria()
       : ZIO[Any, Throwable, GraphQL[RequestContext]] = {
     for {
       introspectionResponseRaw <-
@@ -117,13 +118,46 @@ object Gateway {
         .someOrFailException
         .orDie
       remoteSchemaResolvers = RemoteSchemaResolver.fromSchema(remoteSchema)
-      queryResolver = remoteResolver
-      mutationResolver = remoteResolver
     } yield {
       remoteSchemaResolvers
         .proxy(
-          queryResolver,
-          Some(mutationResolver)
+          RemoteResolver
+            .fromFunctionM((f: Field) =>
+              ZIO
+                .fromFuture(implicit ec =>
+                  Sangria.handleRequest(
+                    RemoteQuery(f).toGraphQLRequest.asJson.asObject.get,
+                    SangriaUserContext(None, None) // TODO token, ip)
+                  )
+                )
+                .flatMap(
+                  ZIO
+                    .fromTry(_)
+                    .flatMap(json =>
+                      ZIO.fromEither(decode[ResponseValue](json.toString))
+                    )
+                )
+                .orDie
+            ),
+          Some(
+            RemoteResolver.fromFunctionM((f: Field) =>
+              ZIO
+                .fromFuture(implicit ex =>
+                  Sangria.handleRequest(
+                    RemoteMutation(f).toGraphQLRequest.asJson.asObject.get,
+                    SangriaUserContext(None, None) // TODO token, ip)
+                  )
+                )
+                .flatMap(
+                  ZIO
+                    .fromTry(_)
+                    .flatMap(json =>
+                      ZIO.fromEither(decode[ResponseValue](json.toString()))
+                    )
+                )
+                .orDie
+            )
+          )
         )
     }
   }
