@@ -63,31 +63,6 @@ object Gateway {
   private def clientIp: ZIO[RequestContext, Nothing, Option[ClientIp]] = ZIO
     .serviceWithZIO[FiberRef[Option[ClientIp]]](_.get)
 
-  private def remoteResolver()
-      : RemoteResolver[RequestContext, Nothing, Field, ResponseValue] =
-    RemoteResolver
-      .fromFunctionM { field =>
-        for {
-          token <- authToken
-          ip <- clientIp
-          result <- ZIO
-            .fromFuture(implicit ec =>
-              Sangria.handleRequest(
-                RemoteQuery(field).toGraphQLRequest.asJson.asObject.get,
-                SangriaUserContext(token, ip)
-              )
-            )
-            .flatMap(
-              ZIO
-                .fromTry(_)
-                .flatMap(json =>
-                  ZIO.fromEither(decode[ResponseValue](json.toString))
-                )
-            )
-            .orDie
-        } yield result
-      }
-
   private def introspectSangria()
       : ZIO[Any, Throwable, GraphQL[RequestContext]] = {
     for {
@@ -118,27 +93,32 @@ object Gateway {
         .someOrFailException
         .orDie
       remoteSchemaResolvers = RemoteSchemaResolver.fromSchema(remoteSchema)
+      remoteQueryResolver: RemoteResolver[
+        RequestContext,
+        Nothing,
+        Field,
+        ResponseValue
+      ] = RemoteResolver
+        .fromFunctionM((f: Field) =>
+          (for {
+            token <- authToken
+            ip <- clientIp
+            request <- ZIO.fromFuture(implicit ex =>
+              Sangria.handleRequest(
+                RemoteQuery(f).toGraphQLRequest.asJson.asObject.get,
+                SangriaUserContext(token, ip)
+              )
+            )
+            json <- ZIO.fromTry(request)
+            response <- ZIO.fromEither(
+              decode[ResponseValue](json.toString())
+            )
+          } yield response).orDie
+        )
     } yield {
       remoteSchemaResolvers
         .proxy(
-          RemoteResolver
-            .fromFunctionM((f: Field) =>
-              ZIO
-                .fromFuture(implicit ec =>
-                  Sangria.handleRequest(
-                    RemoteQuery(f).toGraphQLRequest.asJson.asObject.get,
-                    SangriaUserContext(None, None) // TODO token, ip)
-                  )
-                )
-                .flatMap(
-                  ZIO
-                    .fromTry(_)
-                    .flatMap(json =>
-                      ZIO.fromEither(decode[ResponseValue](json.toString))
-                    )
-                )
-                .orDie
-            ),
+          remoteQueryResolver,
           Some(
             RemoteResolver.fromFunctionM((f: Field) =>
               (for {
