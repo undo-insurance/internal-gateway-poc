@@ -29,6 +29,13 @@ object Sangria {
         description = None,
         arguments = Nil,
         resolve = ctx => StatusOkOutput(output = false, ctx.ctx.name)
+      ),
+      Field(
+        "sangriaError",
+        IntType,
+        description = None,
+        arguments = Nil,
+        resolve = ctx => throw new RuntimeException("oh no")
       )
     )
   )
