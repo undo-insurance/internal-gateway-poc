@@ -53,7 +53,7 @@ object Gateway {
 
   val graph: URIO[Any, GraphQL[RequestContext]] = for {
     pureCaliban <- ZIO.succeed(Caliban.schema)
-    proxiedSangria <- introspectSangria.orDie
+    proxiedSangria <- stitchSangria.orDie
     graphQL = (pureCaliban |+| proxiedSangria)
   } yield graphQL
 
@@ -63,8 +63,7 @@ object Gateway {
   private def clientIp: ZIO[RequestContext, Nothing, Option[ClientIp]] = ZIO
     .serviceWithZIO[FiberRef[Option[ClientIp]]](_.get)
 
-  private def introspectSangria()
-      : ZIO[Any, Throwable, GraphQL[RequestContext]] = {
+  private def stitchSangria(): ZIO[Any, Throwable, GraphQL[RequestContext]] = {
     for {
       introspectionResponseRaw <-
         ZIO
@@ -76,10 +75,6 @@ object Gateway {
                 userContext = SangriaUserContext(None, None)
               )
           }
-      introspectionResponse = introspectionResponseRaw.hcursor
-        .downField("data")
-        .focus
-        .get
       remoteSchema <- ZIO.fromEither {
         caliban.tools.IntrospectionClient.introspection
           .decode(
@@ -93,12 +88,7 @@ object Gateway {
         .someOrFailException
         .orDie
       remoteSchemaResolvers = RemoteSchemaResolver.fromSchema(remoteSchema)
-      remoteQueryResolver: RemoteResolver[
-        RequestContext,
-        Nothing,
-        Field,
-        ResponseValue
-      ] = RemoteResolver
+      remoteQueryResolver = RemoteResolver
         .fromFunctionM((f: Field) =>
           (for {
             token <- authToken
@@ -115,27 +105,28 @@ object Gateway {
             )
           } yield response).orDie
         )
+      remoteMutationResolver = RemoteResolver.fromFunctionM((f: Field) =>
+        (for {
+          token <- authToken
+          ip <- clientIp
+          request <- ZIO.fromFuture(implicit ex =>
+            Sangria.handleRequest(
+              RemoteMutation(f).toGraphQLRequest.asJson.asObject.get,
+              SangriaUserContext(token, ip)
+            )
+          )
+          json <- ZIO.fromTry(request)
+          response <- ZIO.fromEither(
+            decode[ResponseValue](json.toString())
+          )
+        } yield response).orDie
+      )
     } yield {
       remoteSchemaResolvers
         .proxy(
-          remoteQueryResolver,
+          remoteQueryResolver >>> RemoteResolver.unwrap >>> RemoteResolver.unwrap,
           Some(
-            RemoteResolver.fromFunctionM((f: Field) =>
-              (for {
-                token <- authToken
-                ip <- clientIp
-                request <- ZIO.fromFuture(implicit ex =>
-                  Sangria.handleRequest(
-                    RemoteMutation(f).toGraphQLRequest.asJson.asObject.get,
-                    SangriaUserContext(token, ip)
-                  )
-                )
-                json <- ZIO.fromTry(request)
-                response <- ZIO.fromEither(
-                  decode[ResponseValue](json.toString())
-                )
-              } yield response).orDie
-            )
+            remoteMutationResolver >>> RemoteResolver.unwrap >>> RemoteResolver.unwrap
           )
         )
     }
