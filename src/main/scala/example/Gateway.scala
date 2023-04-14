@@ -100,9 +100,7 @@ object Gateway {
               )
             )
             json <- ZIO.fromTry(request)
-            response <- ZIO.fromEither(
-              decode[ResponseValue](json.toString())
-            )
+            response <- ZIO.fromEither(json.as[ResponseValue])
           } yield response).orDie
         )
       remoteMutationResolver = RemoteResolver.fromFunctionM((f: Field) =>
@@ -116,9 +114,7 @@ object Gateway {
             )
           )
           json <- ZIO.fromTry(request)
-          response <- ZIO.fromEither(
-            decode[ResponseValue](json.toString())
-          )
+          response <- ZIO.fromEither(json.as[ResponseValue])
         } yield response).orDie
       )
     } yield {

@@ -4,7 +4,7 @@ object Dependencies {
 
   object Versions {
     val caliban =
-      "2.0.2+34-04bb5f78-SNAPSHOT"
+      "2.1.0"
     val sangria = "3.5.0"
     val zio = "2.0.5"
     val circe = "0.14.3"
