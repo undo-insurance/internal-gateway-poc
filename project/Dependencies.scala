@@ -13,6 +13,7 @@ object Dependencies {
     val akkaHttp = "10.2.10"
     val akkaHttpCirce = "1.39.2"
     val tapir = "1.2.9"
+    val zioTestAkkaHttp = "2.0.2"
   }
 
   lazy val calibanTools =
@@ -35,4 +36,7 @@ object Dependencies {
     "com.github.ghostdogpr" %% "caliban-tapir" % Versions.caliban
   lazy val tapirCirce =
     "com.softwaremill.sttp.tapir" %% "tapir-json-circe" % Versions.tapir
+  lazy val zioTest = "dev.zio" %% "zio-test" % Versions.zio % Test
+  lazy val zioTestAkkaHttp =
+    "info.senia" %% "zio-test-akka-http" % Versions.zioTestAkkaHttp % Test
 }

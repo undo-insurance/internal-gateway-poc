@@ -24,6 +24,10 @@ lazy val root = (project in file("."))
       calibanAkkaHttp,
       akkaHttpCirce,
       calibanTapir,
-      tapirCirce
+      tapirCirce,
+      zioTest,
+      zioTestAkkaHttp
     )
   )
+
+testFrameworks ++= Seq(new TestFramework("zio.test.sbt.ZTestFramework"))

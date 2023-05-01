@@ -14,31 +14,34 @@ import akka.http.scaladsl.Http
 
 object Server extends ZIOAppDefault {
 
-  override def run = {
-    implicit val actorSystem = ActorSystem()
-    val adapter = AkkaHttpAdapter.default(actorSystem.dispatcher)
+  val userContext = UserContext(name = "Poul Skipper")
+  val userContextLayer: ZLayer[Any, Nothing, UserContext] = ZLayer.succeed(
+    userContext
+  )
+  implicit val actorSystem = ActorSystem()
+  val adapter = AkkaHttpAdapter.default(actorSystem.dispatcher)
 
-    val userContext = UserContext(name = "Poul Skipper")
-    val userContextLayer: ZLayer[Any, Nothing, UserContext] = ZLayer.succeed(
-      userContext
-    )
-    for {
-      route <- for {
-        graph <- Gateway.graph.provide(userContextLayer)
-        interpreter <- graph.interpreter.orDie
-        implicit0(runtime: zio.Runtime[UserContext]) <- ZIO.runtime
-          .provideSomeLayer(userContextLayer)
-      } yield {
-        path("graphql") {
-          post {
-            entity(as[JsonObject]) { _ =>
-              adapter.makeHttpService(
-                interpreter
-              )
-            }
-          }
+  val route = for {
+    graph <- Gateway.graph.provide(userContextLayer)
+    interpreter <- graph.interpreter.orDie
+    implicit0(runtime: zio.Runtime[UserContext]) <- ZIO.runtime
+      .provideSomeLayer(userContextLayer)
+  } yield {
+    path("graphql") {
+      post {
+        entity(as[JsonObject]) { _ =>
+          adapter.makeHttpService(
+            interpreter
+          )
         }
       }
+    }
+  }
+
+  override def run = {
+
+    for {
+      route <- route
       bindingFuture <- ZIO.fromFuture { implicit ec =>
         Http().newServerAt("localhost", 8080).bind(route)
       }
