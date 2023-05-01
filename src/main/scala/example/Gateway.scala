@@ -28,6 +28,8 @@ import scala.annotation.meta.field
 import caliban.tools.stitching.RemoteMutation
 import java.util.UUID
 import scala.util.Try
+import scala.tools.nsc.interactive.Response
+import caliban.parsing.adt.LocationInfo
 
 final case class SangriaUserContext(
     token: Option[Gateway.Token],
@@ -62,6 +64,45 @@ object Gateway {
 
   private def clientIp: ZIO[RequestContext, Nothing, Option[ClientIp]] = ZIO
     .serviceWithZIO[FiberRef[Option[ClientIp]]](_.get)
+
+  private val customUnwrapper: RemoteResolver[
+    Any,
+    CalibanError.ExecutionError,
+    ResponseValue,
+    ResponseValue
+  ] =
+    RemoteResolver.fromFunctionM {
+      case v @ ResponseValue.ObjectValue(fields) =>
+        fields.find(_._1 == "errors") match {
+          case None =>
+            fields.headOption match {
+              case None        => ZIO.succeed(v)
+              case Some(value) => ZIO.succeed(value._2)
+            }
+          case Some(error) => {
+            val responseValueJson = error._2.asJson
+            val message: String = responseValueJson.hcursor.downArray
+              .downField("message")
+              .focus
+              .flatMap(_.asString)
+              .getOrElse("Weird error from Sangria")
+            val path: List[Either[String, Int]] = Nil
+            val locationInfo: Option[LocationInfo] = None
+            val innerThrowable: Option[Throwable] = None
+            val extensions: Option[ResponseValue.ObjectValue] = None
+            ZIO.fail(
+              CalibanError.ExecutionError(
+                message,
+                path,
+                locationInfo,
+                innerThrowable,
+                extensions
+              )
+            )
+          }
+        }
+      case x => ZIO.succeed(x)
+    }
 
   private def stitchSangria(): ZIO[Any, Throwable, GraphQL[RequestContext]] = {
     for {
@@ -120,9 +161,9 @@ object Gateway {
     } yield {
       remoteSchemaResolvers
         .proxy(
-          remoteQueryResolver >>> RemoteResolver.unwrap >>> RemoteResolver.unwrap,
+          remoteQueryResolver >>> customUnwrapper,
           Some(
-            remoteMutationResolver >>> RemoteResolver.unwrap >>> RemoteResolver.unwrap
+            remoteMutationResolver >>> customUnwrapper
           )
         )
     }
