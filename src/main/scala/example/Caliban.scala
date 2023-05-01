@@ -12,6 +12,7 @@ import caliban.tools.stitching.RemoteResolver
 import caliban.tools.stitching.RemoteSchemaResolver
 import zio.URIO
 import zio.ZIO
+import caliban.schema.Schema.auto._
 
 object Caliban {
 

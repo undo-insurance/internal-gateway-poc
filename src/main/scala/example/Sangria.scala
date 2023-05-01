@@ -16,19 +16,21 @@ import scala.util.Try
 
 object Sangria {
 
-  case class StatusOkOutput(output: Boolean, userName: String)
+  case class StatusOkOutput(output: Boolean, userName: Option[String])
 
-  implicit val StatusType = deriveObjectType[UserContext, StatusOkOutput]()
+  implicit val StatusType =
+    deriveObjectType[SangriaUserContext, StatusOkOutput]()
 
   val queryType = ObjectType(
     "Query",
-    fields[UserContext, Unit](
+    fields[SangriaUserContext, Unit](
       Field(
         "sangriaStatus",
         StatusType,
         description = None,
         arguments = Nil,
-        resolve = ctx => StatusOkOutput(output = false, ctx.ctx.name)
+        resolve =
+          ctx => StatusOkOutput(output = false, ctx.ctx.token.map(_.value))
       ),
       Field(
         "sangriaError",
@@ -60,12 +62,12 @@ object Sangria {
     )
   )
 
-  val schema: Schema[UserContext, Unit] =
+  val schema: Schema[SangriaUserContext, Unit] =
     Schema(query = queryType, mutation = Some(mutationType))
 
   def handleRequest(
       body: JsonObject,
-      userContext: UserContext
+      userContext: SangriaUserContext
   ): Future[Try[Json]] = {
     implicit val ec = scala.concurrent.ExecutionContext.Implicits.global
     val query = body("query").flatMap(_.asString).getOrElse("")

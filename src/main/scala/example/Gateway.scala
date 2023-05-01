@@ -26,18 +26,44 @@ import java.nio.file.Path
 import sangria.parser.QueryParser
 import scala.annotation.meta.field
 import caliban.tools.stitching.RemoteMutation
+import java.util.UUID
+import scala.util.Try
 
-final case class UserContext(name: String)
+final case class SangriaUserContext(
+    token: Option[Gateway.Token],
+    clientIp: Option[Gateway.ClientIp]
+)
 
 object Gateway {
-  val graph: URIO[UserContext, GraphQL[UserContext]] = for {
+
+  final case class Token(value: String)
+
+  final case class ClientIp(value: String)
+
+  final case class UserId(value: UUID)
+
+  type AuthenticatedRequest = FiberRef[Option[UserId]]
+
+  type ClientIpRequest = FiberRef[Option[ClientIp]]
+
+  type AuthTokenRequest = FiberRef[Option[Token]]
+
+  type RequestContext =
+    AuthTokenRequest with ClientIpRequest with AuthenticatedRequest
+
+  val graph: URIO[Any, GraphQL[RequestContext]] = for {
     pureCaliban <- ZIO.succeed(Caliban.schema)
-    proxiedSangria <- introspectSangria.orDie
+    proxiedSangria <- stitchSangria.orDie
     graphQL = (pureCaliban |+| proxiedSangria)
   } yield graphQL
 
-  private val introspectSangria
-      : ZIO[UserContext, Throwable, GraphQL[UserContext]] = {
+  private def authToken: ZIO[RequestContext, Nothing, Option[Token]] = ZIO
+    .serviceWithZIO[FiberRef[Option[Token]]](_.get)
+
+  private def clientIp: ZIO[RequestContext, Nothing, Option[ClientIp]] = ZIO
+    .serviceWithZIO[FiberRef[Option[ClientIp]]](_.get)
+
+  private def stitchSangria(): ZIO[Any, Throwable, GraphQL[RequestContext]] = {
     for {
       introspectionResponseRaw <-
         ZIO
@@ -46,14 +72,9 @@ object Gateway {
               .execute(
                 Sangria.schema,
                 sangria.introspection.introspectionQuery,
-                userContext =
-                  UserContext("dummy user context for introspection")
+                userContext = SangriaUserContext(None, None)
               )
           }
-      introspectionResponse = introspectionResponseRaw.hcursor
-        .downField("data")
-        .focus
-        .get
       remoteSchema <- ZIO.fromEither {
         caliban.tools.IntrospectionClient.introspection
           .decode(
@@ -67,52 +88,42 @@ object Gateway {
         .someOrFailException
         .orDie
       remoteSchemaResolvers = RemoteSchemaResolver.fromSchema(remoteSchema)
-      queryResolver = RemoteResolver
+      remoteQueryResolver = RemoteResolver
         .fromFunctionM((f: Field) =>
-          for {
-            userContext <- ZIO.service[UserContext]
-            result <- ZIO
-              .fromFuture(implicit ec =>
-                Sangria.handleRequest(
-                  RemoteQuery(f).toGraphQLRequest.asJson.asObject.get,
-                  userContext
-                )
-              )
-              .flatMap(
-                ZIO
-                  .fromTry(_)
-                  .flatMap(json =>
-                    ZIO.fromEither(decode[ResponseValue](json.toString))
-                  )
-              )
-              .orDie
-          } yield result
-        )
-      mutationResolver = RemoteResolver.fromFunctionM((f: Field) =>
-        for {
-          userContext <- ZIO.service[UserContext]
-          result <- ZIO
-            .fromFuture(implicit ex =>
+          (for {
+            token <- authToken
+            ip <- clientIp
+            request <- ZIO.fromFuture(implicit ex =>
               Sangria.handleRequest(
-                RemoteMutation(f).toGraphQLRequest.asJson.asObject.get,
-                userContext
+                RemoteQuery(f).toGraphQLRequest.asJson.asObject.get,
+                SangriaUserContext(token, ip)
               )
             )
-            .flatMap(
-              ZIO
-                .fromTry(_)
-                .flatMap(json =>
-                  ZIO.fromEither(decode[ResponseValue](json.toString()))
-                )
+            json <- ZIO.fromTry(request)
+            response <- ZIO.fromEither(json.as[ResponseValue])
+          } yield response).orDie
+        )
+      remoteMutationResolver = RemoteResolver.fromFunctionM((f: Field) =>
+        (for {
+          token <- authToken
+          ip <- clientIp
+          request <- ZIO.fromFuture(implicit ex =>
+            Sangria.handleRequest(
+              RemoteMutation(f).toGraphQLRequest.asJson.asObject.get,
+              SangriaUserContext(token, ip)
             )
-            .orDie
-        } yield result
+          )
+          json <- ZIO.fromTry(request)
+          response <- ZIO.fromEither(json.as[ResponseValue])
+        } yield response).orDie
       )
     } yield {
       remoteSchemaResolvers
         .proxy(
-          queryResolver,
-          Some(mutationResolver)
+          remoteQueryResolver >>> RemoteResolver.unwrap >>> RemoteResolver.unwrap,
+          Some(
+            remoteMutationResolver >>> RemoteResolver.unwrap >>> RemoteResolver.unwrap
+          )
         )
     }
   }

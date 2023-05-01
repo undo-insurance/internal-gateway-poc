@@ -14,18 +14,22 @@ import akka.http.scaladsl.Http
 
 object Server extends ZIOAppDefault {
 
-  val userContext = UserContext(name = "Poul Skipper")
-  val userContextLayer: ZLayer[Any, Nothing, UserContext] = ZLayer.succeed(
-    userContext
-  )
+  val requestInit: ZLayer[Any, Nothing, Gateway.RequestContext] =
+    ZLayer.scoped(
+      FiberRef.make(Option.empty[Gateway.Token])
+    ) ++ ZLayer.scoped(
+      FiberRef.make(Option.empty[Gateway.ClientIp])
+    ) ++ ZLayer.scoped(
+      FiberRef.make(Option.empty[Gateway.UserId])
+    )
   implicit val actorSystem = ActorSystem()
   val adapter = AkkaHttpAdapter.default(actorSystem.dispatcher)
 
   val route = for {
-    graph <- Gateway.graph.provide(userContextLayer)
+    graph <- Gateway.graph
     interpreter <- graph.interpreter.orDie
-    implicit0(runtime: zio.Runtime[UserContext]) <- ZIO.runtime
-      .provideSomeLayer(userContextLayer)
+    implicit0(runtime: zio.Runtime[Gateway.RequestContext]) <- ZIO.runtime
+      .provideSomeLayer(requestInit)
   } yield {
     path("graphql") {
       post {
