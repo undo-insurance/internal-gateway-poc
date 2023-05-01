@@ -22,8 +22,11 @@ object Caliban {
       ok: () => URIO[Any, StatusOkOutput]
   )
 
+  final case class Error(error: () => URIO[Any, Int])
+
   final case class Queries(
-      status: StatusQueries
+      status: StatusQueries,
+      error: Error
   )
 
   val schema: GraphQL[Any] =
@@ -32,7 +35,8 @@ object Caliban {
         Queries(
           StatusQueries { () =>
             ZIO.die(new RuntimeException("Oh no caliban dies"))
-          }
+          },
+          Error(() => ZIO.die(new RuntimeException("oh no caliban")))
         )
       )
     )
