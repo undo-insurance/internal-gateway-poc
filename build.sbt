@@ -26,6 +26,7 @@ lazy val root = (project in file("."))
       calibanTapir,
       tapirCirce,
       zioTest,
+      zioTestSbt,
       zioTestAkkaHttp
     )
   )
