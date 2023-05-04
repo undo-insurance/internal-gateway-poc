@@ -50,13 +50,11 @@ object HttpErrorPropagationSpec extends ZIOSpecDefault {
                 routeResult.handled.get.entity.toStrict(akkaTimeout)
               }
               .map { response =>
+                println(response.data.utf8String)
                 assertTrue(
                   routeResult.handled.get.status == OK &&
-                    response.data.utf8String
-                      .contains(
-                        // TODO: Fix the expected type
-                        """{"data":null,"errors":[{"message":"Internal server error","path":["sangriaError"],"locations":[{"line":1,"column":9}]}]}}"""
-                      )
+                    response.data.utf8String ==
+                    """{"data":null,"errors":[{"message":"Internal server error","locations":[{"line":1,"column":9}],"path":["sangriaError"]}]}"""
                 )
               }
           )
