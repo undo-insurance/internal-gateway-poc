@@ -34,7 +34,7 @@ object Caliban {
       RootResolver(
         Queries(
           StatusQueries { () =>
-            ZIO.die(new RuntimeException("Oh no caliban dies"))
+            ZIO.succeed(StatusOkOutput(true))
           },
           Error(() => ZIO.die(new RuntimeException("oh no caliban")))
         )
