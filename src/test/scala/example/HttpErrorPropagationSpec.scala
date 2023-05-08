@@ -50,7 +50,6 @@ object HttpErrorPropagationSpec extends ZIOSpecDefault {
                 routeResult.handled.get.entity.toStrict(akkaTimeout)
               }
               .map { response =>
-                println(response.data.utf8String)
                 assertTrue(
                   routeResult.handled.get.status == OK &&
                     response.data.utf8String ==

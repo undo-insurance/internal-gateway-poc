@@ -14,6 +14,7 @@ import io.circe.syntax._
 import sangria.execution.Executor
 import sangria.marshalling.circe._
 import zio._
+import sttp.tapir.json.circe._
 
 import scala.util.Success
 import zio.stream.ZStream
@@ -67,18 +68,24 @@ object Gateway {
 
   private val customUnwrapper: RemoteResolver[
     Any,
+    /*
+     * The Caliban proxy method does not allow for multiple errors in the remote resolver
+     * So we're only getting the first error returned from the stitched Sangria graph
+     * This should be ok, as the clients are not currently fetching multiple fields anyway.
+     *
+     * If we need to support multiple errors returned, then let us speed up the caliban migration
+     * */
     CalibanError.ExecutionError,
     ResponseValue,
     ResponseValue
   ] =
     RemoteResolver.fromFunctionM {
-      case v @ ResponseValue.ObjectValue(fields) =>
+      case objectValueResponse @ ResponseValue.ObjectValue(fields) =>
         fields.find(_._1 == "errors") match {
           case None =>
-            fields.headOption match {
-              case None        => ZIO.succeed(v)
-              case Some(value) => ZIO.succeed(value._2)
-            }
+            ZIO.succeed(
+              fields.headOption.map(_._2).getOrElse(objectValueResponse)
+            )
           case Some(error) => {
             val responseValueJson = error._2.asJson
             val message: String = responseValueJson.hcursor.downArray
@@ -86,22 +93,56 @@ object Gateway {
               .focus
               .flatMap(_.asString)
               .getOrElse("Weird error from Sangria")
-            val path: List[Either[String, Int]] = Nil
-            val locationInfo: Option[LocationInfo] = None
-            val innerThrowable: Option[Throwable] = None
-            val extensions: Option[ResponseValue.ObjectValue] = None
+            val path: List[Either[String, Int]] = {
+              val segments: Option[Vector[Json]] =
+                responseValueJson.hcursor.downArray
+                  .downField("path")
+                  .focus
+                  .flatMap(_.asArray)
+
+              segments
+                .map { paths =>
+                  paths.map { jsonPath =>
+                    (
+                      jsonPath.asNumber.flatMap(_.toInt),
+                      jsonPath.asString
+                    ) match {
+                      case (Some(int), _)    => Right(int)
+                      case (_, Some(string)) => Left(string)
+                      case _ =>
+                        Left(
+                          s"Error while parsing the path segments. Expected Int or String but got: ${jsonPath.noSpaces}"
+                        )
+                    }
+                  }.toList
+                }
+                .getOrElse(List.empty)
+            }
+            val extensions: Option[ResponseValue.ObjectValue] =
+              responseValueJson.hcursor.downArray
+                .downField("extensions")
+                .focus
+                .flatMap { extensionsJson =>
+                  val decoded: Decoder.Result[ResponseValue] =
+                    extensionsJson.as[ResponseValue]
+                  decoded.toOption.flatMap {
+                    case objectValue @ ResponseValue.ObjectValue(_) =>
+                      Some(objectValue)
+                    case _ => None
+                  }
+                }
             ZIO.fail(
               CalibanError.ExecutionError(
                 message,
                 path,
-                locationInfo,
-                innerThrowable,
+                None,
+                None,
                 extensions
               )
             )
           }
         }
-      case x => ZIO.succeed(x)
+      case nonObjectValueResponse => ZIO.succeed(nonObjectValueResponse)
     }
 
   private def stitchSangria(): ZIO[Any, Throwable, GraphQL[RequestContext]] = {
