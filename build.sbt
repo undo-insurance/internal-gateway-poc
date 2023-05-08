@@ -5,6 +5,8 @@ ThisBuild / version := "0.1.0-SNAPSHOT"
 ThisBuild / organization := "com.example"
 ThisBuild / organizationName := "example"
 
+addCompilerPlugin("com.olegpy" %% "better-monadic-for" % "0.3.1")
+
 lazy val root = (project in file("."))
   .settings(
     name := "internal-gateway-poc",
@@ -17,6 +19,16 @@ lazy val root = (project in file("."))
       sangriaMarshalling,
       zio,
       circe,
-      circeParser
+      circeParser,
+      akkaHttp,
+      calibanAkkaHttp,
+      akkaHttpCirce,
+      calibanTapir,
+      tapirCirce,
+      zioTest,
+      zioTestSbt,
+      zioTestAkkaHttp
     )
   )
+
+testFrameworks ++= Seq(new TestFramework("zio.test.sbt.ZTestFramework"))

@@ -13,6 +13,8 @@ import sttp.client3.Identity
 import sttp.client3.testing.SttpBackendStub
 import sttp.client3.httpclient.zio.HttpClientZioBackend
 import caliban.tools.RemoteSchema
+import akka.actor.ActorSystem
+import caliban.AkkaHttpAdapter
 import zio.FiberRef
 
 object Hello extends ZIOAppDefault {
@@ -28,6 +30,7 @@ object Hello extends ZIOAppDefault {
         output
         userName
        }
+       sangriaError
      }
   """
 

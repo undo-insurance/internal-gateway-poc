@@ -29,8 +29,17 @@ object Sangria {
         StatusType,
         description = None,
         arguments = Nil,
-        resolve =
-          ctx => StatusOkOutput(output = false, ctx.ctx.token.map(_.value))
+        resolve = ctx =>
+          Future.successful(
+            StatusOkOutput(output = false, ctx.ctx.token.map(_.value))
+          )
+      ),
+      Field(
+        "sangriaError",
+        IntType,
+        description = None,
+        arguments = Nil,
+        resolve = ctx => Future.failed(new RuntimeException("oh no"))
       )
     )
   )
